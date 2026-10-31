@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Graficador MJ</title>
+  <style>
+    body { margin: 0; font-family: Arial; padding: 10px; }
+    canvas { display: none; margin: 10px 0; border: 1px solid #ccc; }
+    #toolbar {
+      position: fixed; top: 0; left: 0;
+      width: 100%; background: rgba(255,255,255,0.9);
+      padding: 10px; text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    button {
+      padding: 8px 16px; margin: 5px; font-size: 14px;
+      cursor: pointer; border: none; border-radius: 4px;
+      background: #4CAF50; color: white;
+    }
+    button:hover { background: #45a049; }
+    button.active { background: #eb6413; }
+    #info {
+      position: fixed; bottom: 10px; right: 10px;
+      background: rgba(255,255,255,0.9); padding: 10px;
+      border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 10;
+    }
+    .settings-section {
+      margin-top: 20px; padding: 10px;
+      background: rgba(255,255,255,0.9); border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      display: none; position: fixed;
+      bottom: 10px; left: 10px; right: 10px;
+      z-index: 10; max-height: 40%; overflow-y: auto;
+    }
+    .canvas-container {
+      display: flex; justify-content: space-around;
+      margin-top: 120px;
+    }
+    #footer {
+      position: fixed; bottom: 0; left: 0;
+      width: 100%; text-align: center;
+      font-size: 12px; color: #666;
+      padding: 5px 0; background: rgba(255,255,255,0.9);
+      z-index: 5;
+    }
+    .c-inputs { margin-left: 20px; }
+    .c-inputs input { width: 80px; margin: 0 5px; padding: 5px; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <div class="controls-left">
+      <button onclick="showView('mandelbrot')">Mandelbrot</button>
+      <button onclick="showView('julia')">Julia</button>
+      <button onclick="showView('both')">Ambos</button>
+      <button onclick="showView('orbit')">Órbita</button>
+      <button onclick="clearOrbit()">Limpiar Órbita</button>
+    </div>
+    <div class="controls-right">
+      <div class="c-inputs">
+        c = 
+        <input type="number" id="cRealInput" step="0.001" value="0">
+        +
+        <input type="number" id="cImagInput" step="0.001" value="0">i
+        <button onclick="applyManualC()">Aplicar</button>
+      </div>
+      <button id="settingsButton" onclick="toggleSettings()">Ajustes</button>
+      <button onclick="guardarImagen()">Guardar</button>
+    </div>
+  </div>
+  <div id="info">c = 0.000 + 0.000i</div>
+  <div class="canvas-container">
+    <canvas id="mandelbrot"></canvas>
+    <canvas id="julia"></canvas>
+    <canvas id="orbit"></canvas>
+  </div>
+  <div id="settingsSection" class="settings-section">
+    <h3>Ajustes</h3>
+    <div class="settings-controls">
+      <div class="settings-group">
+        <label>Iteraciones:</label>
+        <input type="number" id="maxIter" value="500" min="1" max="99999">
+      </div>
+      <div class="settings-group">
+        <label>Color:</label>
+        <select id="colorScheme">
+          <option value="fire" selected>Fuego</option>
+          <option value="ocean">Océano</option>
+          <option value="taxday">Tax Day</option>
+          <option value="aurora">Aurora</option>
+          <option value="sunset">Atardecer</option>
+          <option value="forest">Bosque</option>
+          <option value="cyberpunk">Cyberpunk</option>
+          <option value="monochrome">Monocromo</option>
+          <option value="custom">Personalizado</option>
+        </select>
+      </div>
+      <div class="settings-group">
+        <label>Familia:</label>
+        <select id="familySelect">
+          <option value="quadratic" selected>Cuadrática (z² + c)</option>
+          <option value="cubic">Cúbica (z³ + c)</option>
+          <option value="quartic">Cuártica (z⁴ + c)</option>
+          <option value="quintic">Química (z⁵ + c)</option>
+          <option value="sextic">Séxtica (z⁶ + c)</option>
+        </select>
+      </div>
+      <div class="settings-group">
+        <label>Límites:</label>
+        <div>
+          <label>X Min:</label><input type="number" id="xmin" value="-1.5" step="0.1">
+          <label>X Max:</label><input type="number" id="xmax" value="1.5" step="0.1">
+          <label>Y Min:</label><input type="number" id="ymin" value="-1.5" step="0.1">
+          <label>Y Max:</label><input type="number" id="ymax" value="1.5" step="0.1">
+          <button onclick="applyLimits()">Aplicar</button>
+        </div>
+      </div>
+      <div class="settings-group">
+        <label>Paleta Personalizada:</label>
+        <div>
+          <input type="color" id="color1" value="#DA865A">
+          <input type="color" id="color2" value="#CFC85D">
+          <input type="color" id="color3" value="#66AF9C">
+          <input type="color" id="color4" value="#976193">
+          <input type="color" id="color5" value="#D86989">
+          <button onclick="applyCustomPalette()">Aplicar Paleta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="footer">Graficador MJ</div>
+  <script>
+    let MAX_ITER = 500;
+    let mandelScale = 300, juliaScale = 300, orbitScale = 300;
+    let mandelCenter = { x: -0.5, y: 0 }, juliaCenter = { x: 0, y: 0 }, orbitCenter = { x: 0, y: 0 };
+    let juliaC = { x: 0, y: 0 }, currentView = 'both', colorScheme = 'fire', family = 'quadratic';
+    let orbitPoints = [];
+    const mandelbrot = document.getElementById('mandelbrot');
+    const julia = document.getElementById('julia');
+    const orbit = document.getElementById('orbit');
+    const mandelCtx = mandelbrot.getContext('2d');
+    const juliaCtx = julia.getContext('2d');
+    const orbitCtx = orbit.getContext('2d');
+    const paletas = {
+      fire: [
+        [0, [0, 0, 0]], 
+        [0.2, [255, 0, 0]], 
+        [0.4, [255, 165, 0]], 
+        [0.6, [255, 255, 0]], 
+        [0.8, [0, 255, 0]], 
+        [1, [0, 0, 255]]
+      ],
+      ocean: [
+        [0, [0, 0, 0]], 
+        [0.2, [0, 0, 128]], 
+        [0.4, [0, 128, 255]], 
+        [0.6, [128, 255, 255]], 
+        [0.8, [255, 255, 255]], 
+        [1, [255, 255, 255]]
+      ],
+      taxday: [
+        [0, [34, 139, 34]], 
+        [0.3, [255, 215, 0]], 
+        [0.6, [255, 69, 0]], 
+        [0.9, [139, 0, 0]], 
+        [1, [0, 0, 0]]
+      ],
+      aurora: [
+        [0, [0, 0, 0]], 
+        [0.3, [0, 76, 153]], 
+        [0.6, [0, 153, 153]], 
+        [0.8, [102, 255, 102]], 
+        [1, [255, 255, 255]]
+      ],
+      sunset: [
+        [0, [235, 129, 38]],
+        [0.2, [233, 182, 97]],
+        [0.4, [234, 158, 121]],
+        [0.6, [226, 126, 126]],
+        [0.8, [171, 90, 116]], 
+        [1, [126,80,114]], 
+      ],
+      forest: [
+        [0, [34, 139, 34]], 
+        [0.3, [0, 100, 0]], 
+        [0.6, [50, 205, 50]], 
+        [0.9, [152, 251, 152]], 
+        [1, [255, 255, 255]]
+      ],
+      cyberpunk: [
+        [0, [0, 0, 0]], 
+        [0.2, [65, 105, 225]], 
+        [0.5, [148, 0, 211]], 
+        [0.8, [255, 0, 255]], 
+        [1, [0, 255, 255]]
+      ],
+      monochrome: [
+        [0, [0, 0, 0]], 
+        [0.25, [64, 64, 64]], 
+        [0.5, [128, 128, 128]], 
+        [0.75, [192, 192, 192]], 
+        [1, [255, 255, 255]]
+      ],
+      custom: [
+        [0, [0, 0, 0]],
+        [0.2, hexToRgb('#DA865A')],
+        [0.4, hexToRgb('#CFC85D')],
+        [0.6, hexToRgb('#66AF9C')],
+        [0.8, hexToRgb('#976193')],
+        [1, hexToRgb('#D86989')]
+      ]
+    };
+    
+    function initialize() {
+      resetLimits();
+      applyLimits();
+      showView('both');
+    }
+    
+    function resetLimits() {
+      document.getElementById('xmin').value = "-1.5";
+      document.getElementById('xmax').value = "1.5";
+      document.getElementById('ymin').value = "-1.5";
+      document.getElementById('ymax').value = "1.5";
+    }
+    
+    function applyLimits() {
+      const xMin = parseFloat(document.getElementById('xmin').value);
+      const xMax = parseFloat(document.getElementById('xmax').value);
+      const yMin = parseFloat(document.getElementById('ymin').value);
+      const yMax = parseFloat(document.getElementById('ymax').value);
+      if (xMin >= xMax || yMin >= yMax) {
+        alert("Los valores mínimos deben ser menores que los máximos");
+        return;
+      }
+      mandelCenter = { x: (xMin + xMax) / 2, y: (yMin + yMax) / 2 };
+      juliaCenter = { ...mandelCenter };
+      orbitCenter = { ...mandelCenter };
+      const width = mandelbrot.width;
+      const height = mandelbrot.height;
+      const scaleX = width / (xMax - xMin), scaleY = height / (yMax - yMin);
+      mandelScale = juliaScale = orbitScale = Math.min(scaleX, scaleY);
+      document.getElementById('info').innerHTML = `c = ${juliaC.x.toFixed(3)} + ${juliaC.y.toFixed(3)}i`;
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    }
+    
+    function resizeCanvas() {
+      const containerWidth = window.innerWidth - 40;
+      const doubleWidth = containerWidth / 2 - 10;
+      mandelbrot.style.display = ['mandelbrot', 'both'].includes(currentView) ? 'block' : 'none';
+      julia.style.display = ['julia', 'both'].includes(currentView) ? 'block' : 'none';
+      orbit.style.display = currentView === 'orbit' ? 'block' : 'none';
+      if (currentView === 'both') {
+        mandelbrot.width = julia.width = doubleWidth;
+        mandelbrot.height = julia.height = window.innerHeight - 160;
+      } else {
+        const active = [mandelbrot, julia, orbit].find(c => c.style.display === 'block');
+        if (active) {
+          active.width = containerWidth;
+          active.height = window.innerHeight - 160;
+        }
+      }
+    }
+    
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('load', () => { resizeCanvas(); initialize(); });
+    
+    function iterate(zReal, zImag, cReal, cImag) {
+      if (family === 'quadratic') return [zReal * zReal - zImag * zImag + cReal, 2 * zReal * zImag + cImag];
+      if (family === 'cubic') {
+        const zr3 = zReal ** 3, zi3 = zImag ** 3;
+        return [zr3 - 3 * zReal * (zImag ** 2) + cReal, 3 * (zReal ** 2) * zImag - zi3 + cImag];
+      }
+      if (family === 'quartic') {
+        const zr2 = zReal ** 2, zi2 = zImag ** 2;
+        return [zr2 * zr2 - 6 * zr2 * zi2 + zi2 * zi2 + cReal, 4 * zReal * zr2 * zImag - 4 * zReal * zImag * zi2 + cImag];
+      }
+      const power = family === 'quintic' ? 5 : 6;
+      let r = zReal, i = zImag;
+      for (let k = 1; k < power; k++) {
+        const newR = r * zReal - i * zImag;
+        const newI = r * zImag + i * zReal;
+        r = newR; i = newI;
+      }
+      return [r + cReal, i + cImag];
+    }
+    
+    function getColor(iter) {
+      if (iter === MAX_ITER) return [0, 0, 0, 255];
+      const t = Math.log(iter) / Math.log(MAX_ITER);
+      const grad = paletas[colorScheme];
+      for (let i = 0; i < grad.length - 1; i++) {
+        const [p1, c1] = grad[i], [p2, c2] = grad[i + 1];
+        if (t >= p1 && t <= p2) {
+          const r = (t - p1) / (p2 - p1);
+          const col = c1.map((v, idx) => Math.floor(v + (c2[idx] - v) * r));
+          return [...col, 255];
+        }
+      }
+      return [0, 0, 0, 255];
+    }
+    
+    function drawMandelbrot() {
+      const w = mandelbrot.width, h = mandelbrot.height;
+      const img = mandelCtx.createImageData(w, h);
+      for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
+        const real = (x - w / 2) / mandelScale + mandelCenter.x;
+        const imag = (y - h / 2) / mandelScale + mandelCenter.y;
+        let zr = 0, zi = 0, i = 0;
+        while (zr * zr + zi * zi <= 4 && i < MAX_ITER) { [zr, zi] = iterate(zr, zi, real, imag); i++; }
+        img.data.set(getColor(i), (y * w + x) * 4);
+      }
+      mandelCtx.putImageData(img, 0, 0);
+    }
+    
+    function drawJulia() {
+      drawJuliaSet(juliaCtx, julia.width, julia.height, juliaScale, juliaCenter.x, juliaCenter.y, juliaC.x, juliaC.y);
+    }
+    
+    function drawJuliaSet(ctx, w, h, scale, centX, centY, cre, ci) {
+      const img = ctx.createImageData(w, h);
+      for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
+        const zr = (x - w / 2) / scale + centX;
+        const zi = (y - h / 2) / scale + centY;
+        let r = zr, i = zi, it = 0;
+        while (r * r + i * i <= 4 && it < MAX_ITER) { [r, i] = iterate(r, i, cre, ci); it++; }
+        img.data.set(getColor(it), (y * w + x) * 4);
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+    
+    function drawOrbitBackground() {
+      if (currentView !== 'orbit') return;
+      const w = orbit.width, h = orbit.height;
+      const img = orbitCtx.createImageData(w, h);
+      for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
+        const real = (x - w / 2) / orbitScale + orbitCenter.x;
+        const imag = (y - h / 2) / orbitScale + orbitCenter.y;
+        let r = real, i = imag, it = 0;
+        while (r * r + i * i <= 4 && it < MAX_ITER) { [r, i] = iterate(r, i, juliaC.x, juliaC.y); it++; }
+        const col = (it === MAX_ITER ? [0, 0, 0, 255] : [255, 255, 255, 255]);
+        img.data.set(col, (y * w + x) * 4);
+      }
+      orbitCtx.putImageData(img, 0, 0);
+      orbitPoints.forEach(obj => {
+        orbitCtx.fillStyle = obj.escaped ? 'red' : 'green';
+        obj.points.forEach(p => {
+          const cx = (p.x - orbitCenter.x) * orbitScale + w / 2;
+          const cy = (p.y - orbitCenter.y) * orbitScale + h / 2;
+          orbitCtx.beginPath(); orbitCtx.arc(cx, cy, 2, 0, 2 * Math.PI); orbitCtx.fill();
+        });
+      });
+    }
+    
+    function clearOrbit() {
+      orbitPoints = [];
+      if (currentView === 'orbit') {
+        orbitCtx.clearRect(0, 0, orbit.width, orbit.height);
+        drawOrbitBackground();
+      }
+    }
+    
+    function handleZoom(e, canvas, center, scale) {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const zf = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+      const bx = (mx - canvas.width / 2) / scale + center.x;
+      const by = (my - canvas.height / 2) / scale + center.y;
+      scale *= zf;
+      const ax = (mx - canvas.width / 2) / scale + center.x;
+      const ay = (my - canvas.height / 2) / scale + center.y;
+      center.x += (bx - ax); center.y += (by - ay);
+      if (canvas === mandelbrot) mandelScale = scale;
+      if (canvas === julia) juliaScale = scale;
+      if (canvas === orbit) orbitScale = scale;
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    }
+    
+    function handleDrag(canvas, center, scale) {
+      let dragging = false, sx, sy;
+      canvas.addEventListener('mousedown', (e) => { dragging = true; const r = canvas.getBoundingClientRect(); sx = e.clientX - r.left; sy = e.clientY - r.top; });
+      canvas.addEventListener('mouseup', () => dragging = false);
+      canvas.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const r = canvas.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
+        const dx = (mx - sx) / scale, dy = (my - sy) / scale;
+        center.x -= dx; center.y += dy; sx = mx; sy = my;
+        if (canvas === mandelbrot && currentView !== 'orbit') drawMandelbrot();
+        if (canvas === julia && ['julia', 'both'].includes(currentView)) drawJulia();
+        if (canvas === orbit) drawOrbitBackground();
+      });
+    }
+    
+    [mandelbrot, julia, orbit].forEach(c => c.addEventListener('wheel', e => {
+      if (currentView === 'orbit' && c !== orbit) return;
+      handleZoom(e, c, c === mandelbrot ? mandelCenter : c === julia ? juliaCenter : orbitCenter, c === mandelbrot ? mandelScale : c === julia ? juliaScale : orbitScale);
+    }));
+    
+    [mandelbrot, julia, orbit].forEach(c => handleDrag(c, c === mandelbrot ? mandelCenter : c === julia ? juliaCenter : orbitCenter, c === mandelbrot ? mandelScale : c === julia ? juliaScale : orbitScale));
+    
+    // Zoom continuo profesional (estilo Xaos mejorado)
+    let zoomAnimationFrame = null;
+    let zoomState = null;
+    let offscreenCanvas = null;
+    let offscreenCtx = null;
+    let baseMaxIter = MAX_ITER;
+    let initialScale = null;
+    
+    function initOffscreenCanvas(canvas) {
+      if (!offscreenCanvas || offscreenCanvas.width !== canvas.width) {
+        offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
+      }
+    }
+    
+    function startContinuousZoom(canvas, center, e) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      
+      initOffscreenCanvas(canvas);
+      
+      const ctx = canvas === mandelbrot ? mandelCtx : juliaCtx;
+      
+      // Guardar escala inicial y iteraciones base
+      initialScale = canvas === mandelbrot ? mandelScale : juliaScale;
+      baseMaxIter = MAX_ITER;
+      
+      zoomState = {
+        canvas,
+        center,
+        ctx,
+        mx,
+        my,
+        lastRenderTime: performance.now(),
+        frameCount: 0
+      };
+      
+      // Capturar imagen inicial
+      offscreenCtx.drawImage(canvas, 0, 0);
+      
+      animateZoom();
+    }
+    
+    function animateZoom() {
+      if (!zoomState) return;
+      
+      const { canvas, center, ctx, mx, my } = zoomState;
+      const now = performance.now();
+      const scale = canvas === mandelbrot ? mandelScale : juliaScale;
+      
+      // Factor de zoom constante
+      const zf = 1.10;
+      
+      // Calcular punto antes del zoom
+      const bx = (mx - canvas.width / 2) / scale + center.x;
+      const by = (my - canvas.height / 2) / scale + center.y;
+      
+      // Aplicar zoom
+      const newScale = scale * zf;
+      
+      // Calcular punto después del zoom
+      const ax = (mx - canvas.width / 2) / newScale + center.x;
+      const ay = (my - canvas.height / 2) / newScale + center.y;
+      
+      // Ajustar centro
+      center.x += (bx - ax);
+      center.y += (by - ay);
+      
+      if (canvas === mandelbrot) mandelScale = newScale;
+      if (canvas === julia) juliaScale = newScale;
+      
+      // Ajustar iteraciones según el nivel de zoom
+      const zoomLevel = newScale / initialScale;
+      MAX_ITER = Math.min(Math.floor(baseMaxIter * Math.log10(zoomLevel + 1) + baseMaxIter), 5000);
+      
+      // Renderizado con interpolación suave
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Limpiar canvas
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Escalar imagen previa desde el centro del zoom
+      ctx.translate(mx, my);
+      ctx.scale(zf, zf);
+      ctx.translate(-mx, -my);
+      ctx.drawImage(offscreenCanvas, 0, 0);
+      ctx.restore();
+      
+      // Copiar resultado al offscreen para el siguiente frame
+      offscreenCtx.drawImage(canvas, 0, 0);
+      
+      zoomState.frameCount++;
+      
+      // Renderizado completo periódico
+      const shouldRender = now - zoomState.lastRenderTime > 150; // Cada 150ms
+      
+      if (shouldRender) {
+        zoomState.lastRenderTime = now;
+        
+        if (canvas === mandelbrot && currentView === 'mandelbrot') {
+          drawMandelbrotFast();
+        } else if (canvas === julia && currentView === 'julia') {
+          drawJuliaFast();
+        }
+        
+        offscreenCtx.drawImage(canvas, 0, 0);
+      }
+      
+      zoomAnimationFrame = requestAnimationFrame(animateZoom);
+    }
+    
+    function drawMandelbrotFast() {
+      const w = mandelbrot.width, h = mandelbrot.height;
+      const step = 0.75; // Renderizar cada 3 píxeles para velocidad
+      const img = mandelCtx.createImageData(w, h);
+      
+      for (let x = 0; x < w; x += step) {
+        for (let y = 0; y < h; y += step) {
+          const real = (x - w / 2) / mandelScale + mandelCenter.x;
+          const imag = (y - h / 2) / mandelScale + mandelCenter.y;
+          let zr = 0, zi = 0, i = 0;
+          while (zr * zr + zi * zi <= 4 && i < MAX_ITER) {
+            [zr, zi] = iterate(zr, zi, real, imag);
+            i++;
+          }
+          const color = getColor(i);
+          
+          // Rellenar bloque de píxeles
+          for (let dx = 0; dx < step && x + dx < w; dx++) {
+            for (let dy = 0; dy < step && y + dy < h; dy++) {
+              img.data.set(color, ((y + dy) * w + (x + dx)) * 4);
+            }
+          }
+        }
+      }
+      mandelCtx.putImageData(img, 0, 0);
+    }
+    
+    function drawJuliaFast() {
+      const w = julia.width, h = julia.height;
+      const step = 5;
+      const img = juliaCtx.createImageData(w, h);
+      
+      for (let x = 0; x < w; x += step) {
+        for (let y = 0; y < h; y += step) {
+          const zr = (x - w / 2) / juliaScale + juliaCenter.x;
+          const zi = (y - h / 2) / juliaScale + juliaCenter.y;
+          let r = zr, im = zi, it = 0;
+          while (r * r + im * im <= 4 && it < MAX_ITER) {
+            [r, im] = iterate(r, im, juliaC.x, juliaC.y);
+            it++;
+          }
+          const color = getColor(it);
+          
+          for (let dx = 0; dx < step && x + dx < w; dx++) {
+            for (let dy = 0; dy < step && y + dy < h; dy++) {
+              img.data.set(color, ((y + dy) * w + (x + dx)) * 4);
+            }
+          }
+        }
+      }
+      juliaCtx.putImageData(img, 0, 0);
+    }
+    
+    function stopContinuousZoom() {
+      if (zoomAnimationFrame) {
+        cancelAnimationFrame(zoomAnimationFrame);
+        zoomAnimationFrame = null;
+      }
+      
+      if (zoomState) {
+        zoomState = null;
+        
+        // Renderizar en alta calidad al soltar
+        setTimeout(() => {
+          if (currentView === 'mandelbrot') drawMandelbrot();
+          if (currentView === 'julia') drawJulia();
+        }, 80);
+      }
+    }
+    
+    mandelbrot.addEventListener('mousedown', (e) => {
+      if (currentView === 'mandelbrot' && e.button === 0) {
+        e.preventDefault();
+        startContinuousZoom(mandelbrot, mandelCenter, e);
+      }
+    });
+    
+    mandelbrot.addEventListener('mouseup', (e) => {
+      if (currentView === 'mandelbrot' && e.button === 0) {
+        stopContinuousZoom();
+      }
+    });
+    
+    mandelbrot.addEventListener('mouseleave', () => {
+      if (currentView === 'mandelbrot') {
+        stopContinuousZoom();
+      }
+    });
+    
+    julia.addEventListener('mousedown', (e) => {
+      if (currentView === 'julia' && e.button === 0) {
+        e.preventDefault();
+        startContinuousZoom(julia, juliaCenter, e);
+      }
+    });
+    
+    julia.addEventListener('mouseup', (e) => {
+      if (currentView === 'julia' && e.button === 0) {
+        stopContinuousZoom();
+      }
+    });
+    
+    julia.addEventListener('mouseleave', () => {
+      if (currentView === 'julia') {
+        stopContinuousZoom();
+      }
+    });
+    
+    mandelbrot.addEventListener('mousemove', e => {
+      if (currentView !== 'both') return;
+      const rect = mandelbrot.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const nx = (mx - mandelbrot.width / 2) / mandelScale + mandelCenter.x;
+      const ny = (my - mandelbrot.height / 2) / mandelScale + mandelCenter.y;
+      juliaC = { x: nx, y: ny };
+      document.getElementById('cRealInput').value = nx.toFixed(3);
+      document.getElementById('cImagInput').value = ny.toFixed(3);
+      document.getElementById('info').innerHTML = `c = ${nx.toFixed(3)} + ${ny.toFixed(3)}i`;
+      drawJuliaSet(juliaCtx, julia.width, julia.height, juliaScale, juliaCenter.x, juliaCenter.y, juliaC.x, juliaC.y);
+    });
+    
+    mandelbrot.addEventListener('click', e => {
+      if (currentView !== 'both') return;
+      const rect = mandelbrot.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const nx = (mx - mandelbrot.width / 2) / mandelScale + mandelCenter.x;
+      const ny = (my - mandelbrot.height / 2) / mandelScale + mandelCenter.y;
+      juliaC = { x: nx, y: ny };
+      document.getElementById('cRealInput').value = nx.toFixed(3);
+      document.getElementById('cImagInput').value = ny.toFixed(3);
+      document.getElementById('info').innerHTML = `c = ${nx.toFixed(3)} + ${ny.toFixed(3)}i`;
+      drawJulia();
+    });
+    
+    orbit.addEventListener('click', e => {
+      if (currentView !== 'orbit') return;
+      const r = orbit.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const real = (mx - orbit.width / 2) / orbitScale + orbitCenter.x;
+      const imag = (my - orbit.height / 2) / orbitScale + orbitCenter.y;
+      let x = real, y = imag; let pts = []; let esc = false;
+      for (let i = 0; i < MAX_ITER; i++) {
+        if (x * x + y * y > 4) { esc = true; break; }
+        pts.push({ x, y });
+        [x, y] = iterate(x, y, juliaC.x, juliaC.y);
+      }
+      orbitPoints.push({ escaped: esc, points: pts });
+      drawOrbitBackground();
+    });
+    
+    document.getElementById('colorScheme').addEventListener('change', e => {
+      colorScheme = e.target.value;
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    });
+    
+    document.getElementById('maxIter').addEventListener('change', e => {
+      MAX_ITER = Math.min(Math.max(parseInt(e.target.value) || 10, 10), 1000);
+      e.target.value = MAX_ITER;
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    });
+    
+    document.getElementById('familySelect').addEventListener('change', e => {
+      family = e.target.value;
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    });
+    
+    function showView(view) {
+      currentView = view;
+      
+      // Si cambiamos a vista "Ambos", resetear a valores originales
+      if (view === 'both') {
+        resetLimits();
+        applyLimits();
+      }
+      
+      document.querySelectorAll('#toolbar button').forEach(btn => {
+        if (btn.id !== 'settingsButton') btn.classList.remove('active');
+      });
+      document.querySelectorAll('#toolbar button').forEach(btn => {
+        if (btn.textContent.toLowerCase() === view && btn.id !== 'settingsButton') btn.classList.add('active');
+      });
+      resizeCanvas();
+      if (['mandelbrot', 'both'].includes(view)) drawMandelbrot();
+      if (['julia', 'both'].includes(view)) drawJulia();
+      if (view === 'orbit') {
+        orbitCenter = { ...juliaCenter }; orbitScale = juliaScale; orbitCtx.clearRect(0, 0, orbit.width, orbit.height); drawOrbitBackground();
+      }
+    }
+    
+    function applyManualC() {
+      const real = parseFloat(document.getElementById('cRealInput').value) || 0;
+      const imag = parseFloat(document.getElementById('cImagInput').value) || 0;
+      juliaC = { x: real, y: imag };
+      document.getElementById('info').innerHTML = `c = ${real.toFixed(3)} + ${imag.toFixed(3)}i`;
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') {
+        orbitCenter = { ...juliaCenter };
+        orbitScale = juliaScale;
+        drawOrbitBackground();
+      }
+    }
+    
+    function guardarImagen() {
+      let cvs;
+      if (currentView === 'mandelbrot') cvs = mandelbrot;
+      else if (currentView === 'julia') cvs = julia;
+      else if (currentView === 'orbit') cvs = orbit;
+      else {
+        const comb = document.createElement('canvas');
+        comb.width = mandelbrot.width + julia.width;
+        comb.height = Math.max(mandelbrot.height, julia.height);
+        const ctx = comb.getContext('2d');
+        ctx.drawImage(mandelbrot, 0, 0);
+        ctx.drawImage(julia, mandelbrot.width, 0);
+        cvs = comb;
+      }
+      const link = document.createElement('a'); link.download = `fractales_${currentView}_${new Date().toISOString().slice(0, 19).replace(/[-T:]/g, '')}.png`;
+      link.href = cvs.toDataURL(); link.click();
+    }
+    
+    function toggleSettings() {
+      const settings = document.getElementById('settingsSection');
+      const btn = document.getElementById('settingsButton');
+      if (settings.style.display === 'none' || settings.style.display === '') {
+        settings.style.display = 'block'; btn.classList.add('active');
+      } else {
+        settings.style.display = 'none'; btn.classList.remove('active');
+      }
+    }
+    
+    function applyCustomPalette() {
+      const colors = [
+        hexToRgb(document.getElementById('color1').value),
+        hexToRgb(document.getElementById('color2').value),
+        hexToRgb(document.getElementById('color3').value),
+        hexToRgb(document.getElementById('color4').value),
+        hexToRgb(document.getElementById('color5').value)
+      ].filter(color => color);
+
+      if (colors.length < 2) {
+        alert("Seleccione al menos 2 colores");
+        return;
+      }
+
+      const step = 1 / (colors.length + 1);
+      let customPalette = [[0, [0, 0, 0]]];
+
+      colors.forEach((color, index) => {
+        customPalette.push([step * (index + 1), color]);
+      });
+
+      paletas['custom'] = customPalette;
+      colorScheme = 'custom';
+      document.getElementById('colorScheme').value = 'custom';
+
+      if (['mandelbrot', 'both'].includes(currentView)) drawMandelbrot();
+      if (['julia', 'both'].includes(currentView)) drawJulia();
+      if (currentView === 'orbit') drawOrbitBackground();
+    }
+    
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16)
+      ] : null;
+    }
+  </script>
+</body>
+</html>
